@@ -27,23 +27,23 @@ jobs:
       - name: Check if package version exist in the registry
         run: |
           set -eo pipefail
-          echo "snforge_scarb_plugin=$(curl -s https://scarbs.xyz/api/v1/index/sn/fo/snforge_scarb_plugin.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')" >> $GITHUB_OUTPUT
-          echo "snforge_std=$(curl -s https://scarbs.xyz/api/v1/index/sn/fo/snforge_std.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')" >> $GITHUB_OUTPUT
-          echo "sncast_std=$(curl -s https://scarbs.xyz/api/v1/index/sn/ca/sncast_std.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')" >> $GITHUB_OUTPUT
+          echo "snforge_scarb_plugin=$(curl -s https://scarbs.dev/api/v1/index/sn/fo/snforge_scarb_plugin.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')" >> $GITHUB_OUTPUT
+          echo "snforge_std=$(curl -s https://scarbs.dev/api/v1/index/sn/fo/snforge_std.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')" >> $GITHUB_OUTPUT
+          echo "sncast_std=$(curl -s https://scarbs.dev/api/v1/index/sn/ca/sncast_std.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')" >> $GITHUB_OUTPUT
 
       - name: Package and upload snforge_scarb_plugin
         if: steps.check-plugins.outputs.snforge_scarb_plugin != 'true'
         working-directory: ./crates/snforge_scarb_plugin
-        run: scarb publish
+        run: scarb publish --index https://scarbs.dev/
 
       - name: Package and upload snforge_std
         if: steps.check-plugins.outputs.snforge_std != 'true'
         working-directory: ./snforge_std
         run: |
           ../scripts/set_plugin_version.sh
-          scarb publish --allow-dirty
+          scarb publish --allow-dirty --index https://scarbs.dev/
 
       - name: Package and upload sncast_std
         if: steps.check-plugins.outputs.sncast_std != 'true'
         working-directory: ./sncast_std
-        run: scarb publish --allow-dirty
+        run: scarb publish --allow-dirty --index https://scarbs.dev/
