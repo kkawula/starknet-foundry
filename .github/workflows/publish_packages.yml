@@ -41,7 +41,8 @@ jobs:
 
       - name: Package and upload snforge_scarb_plugin
         if: steps.check-plugins.outputs.snforge_scarb_plugin != 'true'
-        working-directory: crates/snforge_scarb_plugin
+        working-directory: crates/crates/snforge-scarb-plugin
+
         run: |
           ls
           scarb publish --index https://scarbs.dev/
