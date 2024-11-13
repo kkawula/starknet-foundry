@@ -9,7 +9,6 @@ jobs:
   upload-to-registry:
     name: Upload packages to the registry
     runs-on: ubuntu-latest
-    needs: [ create-release, verify-version ]
     env:
       SCARB_REGISTRY_AUTH_TOKEN: ${{ secrets.SCARB_REGISTRY_AUTH_TOKEN }}
     steps:
