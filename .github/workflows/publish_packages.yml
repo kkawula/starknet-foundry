@@ -24,7 +24,7 @@ jobs:
           scarb-version: "nightly-2024-11-09"
 
       - name: Check if package version exist in the registry
-      - id: check-versions
+        id: check-versions
         run: |
           set -eo pipefail
 
@@ -45,19 +45,19 @@ jobs:
           echo "sncast_std=$sncast_std" >> $GITHUB_OUTPUT
 
       - name: Package and upload snforge_scarb_plugin
-        if: steps.check-versions.outputs.snforge_scarb_plugin == false
+        if: steps.check-versions.outputs.snforge_scarb_plugin == 'false'
         working-directory: crates/snforge-scarb-plugin
 
         run: scarb publish --index https://scarbs.dev/
 
       - name: Package and upload snforge_std
-        if: steps.check-versions.outputs.snforge_std == false
+        if: steps.check-versions.outputs.snforge_std == 'false'
         working-directory: snforge_std
         run: |
           ../scripts/set_plugin_version.sh
           scarb publish --allow-dirty --index https://scarbs.dev/
 
       - name: Package and upload sncast_std
-        if: steps.check-versions.outputs.sncast_std == false
+        if: steps.check-versions.outputs.sncast_std == 'false'
         working-directory: sncast_std
         run: scarb publish --allow-dirty --index https://scarbs.dev/
