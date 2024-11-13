@@ -41,7 +41,7 @@ jobs:
 
       - name: Package and upload snforge_scarb_plugin
         if: steps.check-plugins.outputs.snforge_scarb_plugin != 'true'
-        working-directory: crates/crates/snforge-scarb-plugin
+        working-directory: crates/snforge-scarb-plugin
 
         run: |
           ls
