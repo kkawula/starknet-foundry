@@ -21,12 +21,11 @@ jobs:
       - uses: software-mansion/setup-scarb@v1
         with:
           # todo: Use scarb stable version that support publishing plugins (after 2.8.4)
-          scarb-version: "2.8.4"
+          scarb-version: "nightly-2024-11-09"
 
       - name: Check if package version exist in the registry
         run: |
           set -eo pipefail
-          ls
           snforge_scarb_plugin=$(curl -s https://scarbs.dev/api/v1/index/sn/fo/snforge_scarb_plugin.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')
           snforge_std=$(curl -s https://scarbs.dev/api/v1/index/sn/fo/snforge_std.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')
           sncast_std=$(curl -s https://scarbs.dev/api/v1/index/sn/ca/sncast_std.json | jq --arg version "${{ steps.scarb-init.outputs.CAIRO_VERSION }}" '[.[] | select(.v == $version)] | length > 0')
@@ -43,9 +42,7 @@ jobs:
         if: steps.check-plugins.outputs.snforge_scarb_plugin != 'true'
         working-directory: crates/snforge-scarb-plugin
 
-        run: |
-          ls
-          scarb publish --index https://scarbs.dev/
+        run: scarb publish --index https://scarbs.dev/
 
       - name: Package and upload snforge_std
         if: steps.check-plugins.outputs.snforge_std != 'true'
