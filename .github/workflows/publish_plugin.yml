@@ -104,7 +104,7 @@ jobs:
 
           cp ./target/${TARGET}/release/*.${EXT} ./target/${TARGET}/release/${OUTPUT_BINARY}
 
-          OUTPUT_BINARY_PATH="./target/${TARGET}/release/${OUTPUT_BINARY}"
+          echo "OUTPUT_BINARY_PATH=./target/${TARGET}/release/${OUTPUT_BINARY}" >> $GITHUB_ENV
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
