@@ -102,9 +102,9 @@ jobs:
 
           OUTPUT_BINARY="${PACKAGE_NAME}_v${PACKAGE_VERSION}_${TARGET}.${EXT}"
 
-          ls ./target -R
+          ls -R ./target
           echo "CHECK"
-          ls ./target/${TARGET} -R
+          ls -R ./target/${TARGET} 
 
           cp ./target/${TARGET}/release/*.${EXT} ./target/${TARGET}/release/${OUTPUT_BINARY}
 
