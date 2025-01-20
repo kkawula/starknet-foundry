@@ -139,11 +139,23 @@ jobs:
         shell: bash
         run: ls artifacts-dl
 
-      - name: Move artifacts to staging director
+      - name: Unzip artifacts
         shell: bash
         run: |
+          set -euxo pipefail
+          mkdir -p artifacts-unzipped
+          
+          find artifacts-dl -type f -name "*.zip" -exec unzip -q {} -d artifacts-unzipped \;
+          ls -R artifacts-unzipped
+
+      - name: Move artifacts to the staging directory
+        shell: bash
+        run: |
+          set -euxo pipefail
+        
           mkdir -p crates/snforge-scarb-plugin/target/scarb/cairo-plugin
-          mv artifacts-dl/build-* crates/snforge-scarb-plugin/target/scarb/cairo-plugin/
+          mv artifacts-unzipped/* crates/snforge-scarb-plugin/target/scarb/cairo-plugin/
+
 
       - name: Debug 2
         shell: bash
