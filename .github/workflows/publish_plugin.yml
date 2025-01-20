@@ -135,31 +135,19 @@ jobs:
         with:
           path: artifacts-dl
 
-      - name: Debug 1
-        shell: bash
-        run: ls artifacts-dl
-
       - name: Unzip artifacts
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p artifacts-unzipped
           
-          find artifacts-dl -type f -name "*.zip" -exec unzip -q {} -d artifacts-unzipped \;
+          find artifacts-dl -type f -name "build-*" -exec unzip -q {} -d artifacts-unzipped \;
           ls -R artifacts-unzipped
 
-      - name: Move artifacts to the staging directory
-        shell: bash
-        run: |
-          set -euxo pipefail
-        
           mkdir -p crates/snforge-scarb-plugin/target/scarb/cairo-plugin
           mv artifacts-unzipped/* crates/snforge-scarb-plugin/target/scarb/cairo-plugin/
-
-
-      - name: Debug 2
-        shell: bash
-        run: ls crates/snforge-scarb-plugin/target/scarb/cairo-plugin
+          
+          ls crates/snforge-scarb-plugin/target/scarb/cairo-plugin
 
 #      - name: Publish snforge_scarb_plugin
 #        if: needs.check-version.outputs.snforge_scarb_plugin_uploaded == 'false' || github.event_name == 'workflow_dispatch'
