@@ -107,6 +107,12 @@ jobs:
 
           OUTPUT_BINARY="${PACKAGE_NAME}_v${PACKAGE_VERSION}_${TARGET}.${EXT}"
 
+          ls ./target/${TARGET}/release
+          
+          echo 123
+
+          find ./target/${TARGET}/release/*.${EXT}
+
           mv ./target/${TARGET}/release/*.${EXT} ./target/${TARGET}/release/${OUTPUT_BINARY}
 
           echo "OUTPUT_BINARY_PATH=./target/${TARGET}/release/${OUTPUT_BINARY}" >> $GITHUB_ENV
@@ -144,7 +150,5 @@ jobs:
           
           mv artifacts-dl/build-*/snforge_scarb_plugin_* crates/snforge-scarb-plugin/target/scarb/cairo-plugin/
 
-      - name: Publish snforge_scarb_plugin
-        if: needs.check-version.outputs.plugin_uploaded == 'false' || github.event_name == 'workflow_dispatch'
-        working-directory: crates/snforge-scarb-plugin
-        run: scarb publish
+          ls crates/snforge-scarb-plugin/target/scarb/cairo-plugin/
+
