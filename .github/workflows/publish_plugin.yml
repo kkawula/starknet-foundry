@@ -119,7 +119,7 @@ jobs:
 
           find ./target/${TARGET}/release/*.${EXT}
 
-          mv ./target/${TARGET}/release/{LIB_NAME}.${EXT} ./target/${TARGET}/release/${OUTPUT_BINARY}
+          mv ./target/${TARGET}/release/${LIB_NAME}.${EXT} ./target/${TARGET}/release/${OUTPUT_BINARY}
 
           echo "OUTPUT_BINARY_PATH=./target/${TARGET}/release/${OUTPUT_BINARY}" >> $GITHUB_ENV
 
