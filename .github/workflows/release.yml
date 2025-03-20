@@ -261,27 +261,8 @@ jobs:
 
   publish-to-registry:
     name: Publish packages to the registry
-    runs-on: ubuntu-latest
     needs: [ create-release, publish-snforge-scarb-plugin ]
-    env:
-      SCARB_REGISTRY_AUTH_TOKEN: ${{ secrets.SCARB_REGISTRY_AUTH_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
-        with:
-          toolchain: stable
-
-      - uses: software-mansion/setup-scarb@v1
-        with:
-          scarb-version: "2.11.0"
-
-      - name: Publish sncast_std
-        working-directory: sncast_std
-        run: scarb publish --allow-dirty
-
-      - name: Publish snforge_std
-        working-directory: snforge_std
-        run: |
-          ../scripts/set_plugin_version.sh
-          scarb publish --allow-dirty
+    uses: ./.github/workflows/publish_std.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.verify-version.outputs.version }}

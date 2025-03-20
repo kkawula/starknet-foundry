@@ -10,124 +10,488 @@ on:
   workflow_dispatch:
 
 jobs:
-  get-scarb-versions:
-    if: "! github.event.repository.fork"
-    name: Get Scarb versions
+  verify-version:
+    name: Verify that version that triggered this workflow is greater than most recent  release
+    runs-on: ubuntu-latest
     outputs:
-      versions: ${{ steps.get_versions.outputs.versions }}
-    runs-on: ubuntu-latest
+      version: ${{ steps.validVersion.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - uses: asdf-vm/actions/install@05e0d2ed97b598bfce82fd30daf324ae0c4570e6
-        with:
-          tool_versions: |
-            scarb latest
 
-      - name: Get versions
-        id: get_versions
+      - name: Get version from Cargo.toml
+        id: lookupVersion
+        uses: mikefarah/yq@bbdd97482f2d439126582a59689eb1c855944955
+        with:
+          cmd: yq -oy '"v" + .workspace.package.version' 'Cargo.toml'
+          
+      - name: Compare versions
+        id: validVersion
         run: |
-          scarb_versions=$(./scripts/get_scarb_versions.sh)
-          echo ${scarb_versions[@]}
-          echo "versions=[${scarb_versions[@]}]" >> "$GITHUB_OUTPUT"
+          COMMIT_VERSION=${{ steps.lookupVersion.outputs.result }}
+          echo "Project version from this commit = $COMMIT_VERSION"
+          echo "version=$COMMIT_VERSION" >> "$GITHUB_OUTPUT"
+          
+  publish-plugin:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: verify-version
+    uses: ./.github/workflows/publish_plugin.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.verify-version.outputs.version }}-test.${{ github.sha }}
+      scarb_args: "--index https://scarbs.dev/"
 
-  test-forge-unit-and-integration:
-    if: "! github.event.repository.fork"
-    runs-on: ubuntu-latest
-    needs: get-scarb-versions
+  publish-std:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: [verify-version, publish-plugin]
+    uses: ./.github/workflows/publish_std.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.verify-version.outputs.version }}-test.${{ github.sha }}
+      scarb_args: "--index https://scarbs.dev/"
+
+  build-binaries:
+    name: Build ${{ matrix.target }}
+    needs: [verify-version, publish-std]
+    if: ${{ needs.verify-version.outputs.versionIsValid == 'true' }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+
+    env:
+      # Cross-compiled targets will override this to `cross`.
+      CARGO: cargo
+
     strategy:
-      fail-fast: false
       matrix:
-        version: ${{ fromJSON(needs.get-scarb-versions.outputs.versions) }}
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            # Use cross to link oldest GLIBC possible.
+            cross: true
+
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+
+          - target: aarch64-apple-darwin
+            os: macos-latest
+
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
-      - uses: software-mansion/setup-scarb@v1
+
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
-          scarb-version: ${{ matrix.version }}
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+          toolchain: stable
+          target: ${{ matrix.target }}
 
-      - run: cargo test --release --lib -p forge
-      - run: cargo test --release -p forge integration --features assert_non_exact_gas
-
-  test-forge-e2e:
-    if: "! github.event.repository.fork"
-    runs-on: ubuntu-latest
-    needs: get-scarb-versions
-    strategy:
-      fail-fast: false
-      matrix:
-        version: ${{ fromJSON(needs.get-scarb-versions.outputs.versions) }}
-
-    steps:
-      - name: Extract branch name
-        if: github.event_name != 'pull_request'
-        run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
-
-      - name: Extract branch name on pull request
-        if: github.event_name == 'pull_request'
-        run: echo "BRANCH_NAME=$(echo $GITHUB_HEAD_REF)" >> $GITHUB_ENV
-
-      - name: Extract repo name and owner
-        if: github.event_name != 'pull_request'
-        run: echo "REPO_NAME=$(echo ${{ github.repository }}.git)" >> $GITHUB_ENV
-
-      - name: Extract repo name and owner on pull request
-        if: github.event_name == 'pull_request'
-        run: echo "REPO_NAME=$(echo ${{ github.event.pull_request.head.repo.full_name }}.git)" >> $GITHUB_ENV
-
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
-      - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: ${{ matrix.version }}
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
-      - name: Install cairo-profiler
+          workspaces: starknet-foundry
+
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@cross
+
+      - name: Enable cross-compilation
+        if: matrix.cross
+        shell: bash
         run: |
-          curl -L https://raw.githubusercontent.com/software-mansion/cairo-profiler/main/scripts/install.sh | sh
-      - name: Install cairo-coverage
+          echo "CARGO=cross" >> $GITHUB_ENV
+
+      - name: Build
+        run: ${{ env.CARGO }} build --release --locked --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
         run: |
-          curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
-      - uses: taiki-e/install-action@nextest
+          set -euxo pipefail
+          PKG_FULL_NAME="starknet-foundry-${{ needs.verify-version.outputs.version }}-${{ matrix.target }}"
+          echo "PKG_FULL_NAME=$PKG_FULL_NAME" >> $GITHUB_ENV
 
-      - run: cargo test --release -p forge e2e
+          chmod +x ./scripts/package.sh
+          ./scripts/package.sh "${{ matrix.target }}" "$PKG_FULL_NAME"
 
-  test-cast:
-    if: "! github.event.repository.fork"
-    runs-on: ubuntu-latest
-    needs: get-scarb-versions
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.target }}
+          path: ${{ env.PKG_FULL_NAME }}.*
+
+  test-binary:
+    name: Test binary
+    runs-on: ${{ matrix.os }}
+    needs: [ build-binaries, verify-version ]
+
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        version: ${{ fromJSON(needs.get-scarb-versions.outputs.versions) }}
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
 
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
       - uses: software-mansion/setup-scarb@v1
+
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
-          scarb-version: ${{ matrix.version }}
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+          toolchain: stable
 
-      - name: Install starknet-devnet-rs
-        run: ./scripts/install_devnet.sh
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts-dl
 
-      - run: cargo test --release -p sncast
+      - name: Move artifacts to staging director
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          mv artifacts-dl/build-*/starknet-foundry-* artifacts/
 
-  notify_if_failed:
-    runs-on: ubuntu-latest
-    if: always() && contains(needs.*.result, 'failure') && github.event_name == 'schedule'
-    needs: [ test-forge-unit-and-integration, test-forge-e2e, test-cast ]
-    steps:
-      - name: Notify that the workflow has failed
-        uses: slackapi/slack-github-action@v1.27.0
+      - name: Get binary path
+        shell: bash
+        run: |
+          if [[ ${{ matrix.target }} == *windows* ]]; then
+            BINARY_PATH="artifacts/starknet-foundry-${{ needs.verify-version.outputs.version }}-${{ matrix.target }}.zip"
+          else
+            BINARY_PATH="artifacts/starknet-foundry-${{ needs.verify-version.outputs.version }}-${{ matrix.target }}.tar.gz"
+          fi
+          echo "BINARY_PATH=$BINARY_PATH" >> $GITHUB_ENV
+
+      - name: Unpack artifact
+        shell: bash
+        run: |
+          if [[ ${{ matrix.target }} == *windows* ]]; then
+            unzip ${{ env.BINARY_PATH }}
+          else
+            tar xzvf ${{ env.BINARY_PATH }}
+          fi
+
+      - name: Install universal-sierra-compiler
+        uses: software-mansion/setup-universal-sierra-compiler@v1
+
+      - name: Smoke test
+        shell: bash
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SCHEDULED_TESTS_FAILURE_WEBHOOK_URL }}
-        with:
-          payload: |
-            {
-              "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+          RPC_URL: "http://188.34.188.184:7070/rpc/v0_7"
+        run: |
+          BINARY_PATH="${{ env.BINARY_PATH }}"
+          BINARY_PATH="${BINARY_PATH%.tar.gz}"
+          BINARY_PATH="${BINARY_PATH%.zip}"
+          BINARY_PATH="${BINARY_PATH#artifacts/}"
+          
+          if [[ ${{ matrix.target }} == *windows* ]]; then
+            SNFORGE_PATH=$(readlink -f $BINARY_PATH/bin/snforge.exe)
+            SNCAST_PATH=$(readlink -f $BINARY_PATH/bin/sncast.exe)
+          else
+            SNFORGE_PATH=$(readlink -f $BINARY_PATH/bin/snforge)
+            SNCAST_PATH=$(readlink -f $BINARY_PATH/bin/sncast)
+          fi
+          
+          REPO_URL=${{ github.repositoryUrl }}
+          REVISION=${{ github.sha }}
+          
+          ./scripts/smoke_test.sh "$RPC_URL" "$SNFORGE_PATH" "$SNCAST_PATH" "$REPO_URL" "$REVISION"
+          build-binaries:
+            name: Build ${{ matrix.target }}
+            needs: verify-version
+            if: ${{ needs.verify-version.outputs.versionIsValid == 'true' }}
+            runs-on: ${{ matrix.os }}
+            continue-on-error: true
+        
+            env:
+              # Cross-compiled targets will override this to `cross`.
+              CARGO: cargo
+        
+            strategy:
+              matrix:
+                include:
+                  - target: x86_64-unknown-linux-gnu
+                    os: ubuntu-latest
+                    # Use cross to link oldest GLIBC possible.
+                    cross: true
+        
+                  - target: x86_64-unknown-linux-musl
+                    os: ubuntu-latest
+                    cross: true
+        
+                  - target: aarch64-unknown-linux-gnu
+                    os: ubuntu-latest
+                    cross: true
+        
+                  - target: aarch64-unknown-linux-musl
+                    os: ubuntu-latest
+                    cross: true
+        
+                  - target: x86_64-apple-darwin
+                    os: macos-latest
+        
+                  - target: aarch64-apple-darwin
+                    os: macos-latest
+        
+                  - target: x86_64-pc-windows-msvc
+                    os: windows-latest
+        
+            steps:
+              - uses: actions/checkout@v4
+        
+              - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
+                with:
+                  toolchain: stable
+                  target: ${{ matrix.target }}
+        
+              - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
+                with:
+                  workspaces: starknet-foundry
+        
+              - name: Install cross
+                if: matrix.cross
+                uses: taiki-e/install-action@cross
+        
+              - name: Enable cross-compilation
+                if: matrix.cross
+                shell: bash
+                run: |
+                  echo "CARGO=cross" >> $GITHUB_ENV
+        
+              - name: Build
+                run: ${{ env.CARGO }} build --release --locked --target ${{ matrix.target }}
+        
+              - name: Package
+                shell: bash
+                run: |
+                  set -euxo pipefail
+                  PKG_FULL_NAME="starknet-foundry-${{ needs.verify-version.outputs.version }}-${{ matrix.target }}"
+                  echo "PKG_FULL_NAME=$PKG_FULL_NAME" >> $GITHUB_ENV
+        
+                  chmod +x ./scripts/package.sh
+                  ./scripts/package.sh "${{ matrix.target }}" "$PKG_FULL_NAME"
+        
+              - name: Upload artifact
+                uses: actions/upload-artifact@v4
+                with:
+                  name: build-${{ matrix.target }}
+                  path: ${{ env.PKG_FULL_NAME }}.*
+        
+          test-binary:
+            name: Test binary
+            runs-on: ${{ matrix.os }}
+            needs: [ build-binaries, verify-version ]
+        
+            strategy:
+              fail-fast: true
+              matrix:
+                include:
+                  - target: x86_64-unknown-linux-gnu
+                    os: ubuntu-latest
+        
+                  - target: x86_64-apple-darwin
+                    os: macos-latest
+        
+                  - target: x86_64-pc-windows-msvc
+                    os: windows-latest
+        
+            steps:
+              - uses: actions/checkout@v4
+              - uses: software-mansion/setup-scarb@v1
+        
+              - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
+                with:
+                  toolchain: stable
+        
+              - name: Download artifacts
+                uses: actions/download-artifact@v4
+                with:
+                  path: artifacts-dl
+        
+              - name: Move artifacts to staging director
+                shell: bash
+                run: |
+                  mkdir -p artifacts
+                  mv artifacts-dl/build-*/starknet-foundry-* artifacts/
+        
+              - name: Get binary path
+                shell: bash
+                run: |
+                  if [[ ${{ matrix.target }} == *windows* ]]; then
+                    BINARY_PATH="artifacts/starknet-foundry-${{ needs.verify-version.outputs.version }}-${{ matrix.target }}.zip"
+                  else
+                    BINARY_PATH="artifacts/starknet-foundry-${{ needs.verify-version.outputs.version }}-${{ matrix.target }}.tar.gz"
+                  fi
+                  echo "BINARY_PATH=$BINARY_PATH" >> $GITHUB_ENV
+        
+              - name: Unpack artifact
+                shell: bash
+                run: |
+                  if [[ ${{ matrix.target }} == *windows* ]]; then
+                    unzip ${{ env.BINARY_PATH }}
+                  else
+                    tar xzvf ${{ env.BINARY_PATH }}
+                  fi
+        
+              - name: Install universal-sierra-compiler
+                uses: software-mansion/setup-universal-sierra-compiler@v1
+        
+              - name: Smoke test
+                shell: bash
+                env:
+                  RPC_URL: "http://188.34.188.184:7070/rpc/v0_7"
+                run: |
+                  BINARY_PATH="${{ env.BINARY_PATH }}"
+                  BINARY_PATH="${BINARY_PATH%.tar.gz}"
+                  BINARY_PATH="${BINARY_PATH%.zip}"
+                  BINARY_PATH="${BINARY_PATH#artifacts/}"
+                  
+                  if [[ ${{ matrix.target }} == *windows* ]]; then
+                    SNFORGE_PATH=$(readlink -f $BINARY_PATH/bin/snforge.exe)
+                    SNCAST_PATH=$(readlink -f $BINARY_PATH/bin/sncast.exe)
+                  else
+                    SNFORGE_PATH=$(readlink -f $BINARY_PATH/bin/snforge)
+                    SNCAST_PATH=$(readlink -f $BINARY_PATH/bin/sncast)
+                  fi
+                  
+                  REPO_URL=${{ github.repositoryUrl }}
+                  REVISION=${{ github.sha }}
+                  
+                  ./scripts/smoke_test.sh "$RPC_URL" "$SNFORGE_PATH" "$SNCAST_PATH" "$REPO_URL" "$REVISION"
+
+  # get-scarb-versions:
+  #   if: ! github.event.repository.fork
+  #   name: Get Scarb versions
+  #   outputs:
+  #     versions: ${{ steps.get_versions.outputs.versions }}
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: asdf-vm/actions/install@05e0d2ed97b598bfce82fd30daf324ae0c4570e6
+  #       with:
+  #         tool_versions: |
+  #           scarb latest
+
+  #     - name: Get versions
+  #       id: get_versions
+  #       run: |
+  #         scarb_versions=$(./scripts/get_scarb_versions.sh)
+  #         echo ${scarb_versions[@]}
+  #         echo "versions=[${scarb_versions[@]}]" >> "$GITHUB_OUTPUT"
+
+  # test-forge-unit-and-integration:
+  #   if: ! github.event.repository.fork
+  #   runs-on: ubuntu-latest
+  #   needs: get-scarb-versions
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       version: ${{ fromJSON(needs.get-scarb-versions.outputs.versions) }}
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
+  #     - uses: software-mansion/setup-scarb@v1
+  #       with:
+  #         scarb-version: ${{ matrix.version }}
+  #     - uses: software-mansion/setup-universal-sierra-compiler@v1
+
+  #     - run: cargo test --release --lib -p forge
+  #     - run: cargo test --release -p forge integration --features assert_non_exact_gas
+
+  # test-forge-e2e:
+  #   if: ! github.event.repository.fork
+  #   runs-on: ubuntu-latest
+  #   needs: get-scarb-versions
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       version: ${{ fromJSON(needs.get-scarb-versions.outputs.versions) }}
+
+  #   steps:
+  #     - name: Extract branch name
+  #       if: github.event_name != 'pull_request'
+  #       run: echo "BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+
+  #     - name: Extract branch name on pull request
+  #       if: github.event_name == 'pull_request'
+  #       run: echo "BRANCH_NAME=$(echo $GITHUB_HEAD_REF)" >> $GITHUB_ENV
+
+  #     - name: Extract repo name and owner
+  #       if: github.event_name != 'pull_request'
+  #       run: echo "REPO_NAME=$(echo ${{ github.repository }}.git)" >> $GITHUB_ENV
+
+  #     - name: Extract repo name and owner on pull request
+  #       if: github.event_name == 'pull_request'
+  #       run: echo "REPO_NAME=$(echo ${{ github.event.pull_request.head.repo.full_name }}.git)" >> $GITHUB_ENV
+
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
+  #     - uses: software-mansion/setup-scarb@v1
+  #       with:
+  #         scarb-version: ${{ matrix.version }}
+  #     - uses: software-mansion/setup-universal-sierra-compiler@v1
+  #     - name: Install cairo-profiler
+  #       run: |
+  #         curl -L https://raw.githubusercontent.com/software-mansion/cairo-profiler/main/scripts/install.sh | sh
+  #     - name: Install cairo-coverage
+  #       run: |
+  #         curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
+  #     - uses: taiki-e/install-action@nextest
+
+  #     - run: cargo test --release -p forge e2e
+
+  # test-cast:
+  #   if: ! github.event.repository.fork
+  #   runs-on: ubuntu-latest
+  #   needs: get-scarb-versions
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       version: ${{ fromJSON(needs.get-scarb-versions.outputs.versions) }}
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab
+  #     - uses: software-mansion/setup-scarb@v1
+  #       with:
+  #         scarb-version: ${{ matrix.version }}
+  #     - uses: software-mansion/setup-universal-sierra-compiler@v1
+
+  #     - name: Install starknet-devnet-rs
+  #       run: ./scripts/install_devnet.sh
+
+  #     - run: cargo test --release -p sncast
+
+  # notify_if_failed:
+  #   runs-on: ubuntu-latest
+  #   if: always() && contains(needs.*.result, 'failure') && github.event_name == 'schedule'
+  #   needs: [ test-forge-unit-and-integration, test-forge-e2e, test-cast ]
+  #   steps:
+  #     - name: Notify that the workflow has failed
+  #       uses: slackapi/slack-github-action@v1.27.0
+  #       env:
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_SCHEDULED_TESTS_FAILURE_WEBHOOK_URL }}
+  #       with:
+  #         payload: |
+  #           {
+  #             "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+  #           }

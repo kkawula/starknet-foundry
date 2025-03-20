@@ -8,12 +8,14 @@ SNFORGE_PATH="$2"
 SNCAST_PATH="$3"
 REPO_URL="$4"
 REVISION="$5"
+VERSION="$6"
 
 # Check forge
 
 $SNFORGE_PATH init my_project
 pushd my_project || exit
-scarb add --dev snforge_std --git "$REPO_URL" --rev "$REVISION"
+sed -i.bak "/snforge_std/ s/\(snforge_std = \).*/\1{ version = \"${VERSION}\", registry = \"https:\/\/scarbs.dev\/\" }/" Scarb.toml
+rm Scarb.toml.bak 2> /dev/null
 $SNFORGE_PATH test || exit
 popd || exit
 
