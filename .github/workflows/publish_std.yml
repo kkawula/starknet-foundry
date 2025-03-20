@@ -46,3 +46,4 @@ jobs:
         run: |
           scarb add snforge_scarb_plugin@${{ inputs.version }}
           scarb publish --allow-dirty ${{ inputs.scarb_args }}
+          
