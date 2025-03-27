@@ -21,7 +21,6 @@ on:
         required: false
         type: string
       build_plugin_binaries:
-        required: true
         type: boolean
         default: false
 
