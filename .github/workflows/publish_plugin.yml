@@ -7,7 +7,7 @@ on:
         required: false
         type: boolean
         default: false
-      override_plugin_version:
+      overridden_plugin_version:
         required: false
         type: string
 
@@ -17,12 +17,9 @@ on:
         required: false
         type: boolean
         default: false
-      override_plugin_version:
+      overridden_plugin_version:
         required: false
         type: string
-      build_plugin_binaries:
-        type: boolean
-        default: false
 
 jobs:
   check-version:
@@ -37,10 +34,10 @@ jobs:
         run: |
           set -exo pipefail
 
-          if [ -z "${{ inputs.override_plugin_version }}" ]; then
-            snforge_scarb_plugin_version=$(grep version crates/snforge-scarb-plugin/Scarb.toml | cut -d '"' -f 2)
+          if [ -z "${{ inputs.overridden_plugin_version }}" ]; then
+            snforge_scarb_plugin_version=$(grep "^version =" crates/snforge-scarb-plugin/Scarb.toml | cut -d '"' -f 2)
           else
-            snforge_scarb_plugin_version="${{ inputs.override_plugin_version }}"
+            snforge_scarb_plugin_version="${{ inputs.overridden_plugin_version }}"
           fi
           plugin_uploaded=$(curl -s https://scarbs.xyz/api/v1/index/sn/fo/snforge_scarb_plugin.json | jq --arg version "$snforge_scarb_plugin_version" '[.[] | select(.v == $version)] | length > 0')
           echo "plugin_uploaded=$plugin_uploaded" >> $GITHUB_OUTPUT
@@ -48,10 +45,10 @@ jobs:
   build-binaries:
     name: Build Plugin Binaries
     needs: check-version
-    if: inputs.build_plugin_binaries == true
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_build-plugin-binaries.yml
     with:
-      override_plugin_version: ${{ inputs.override_plugin_version != '' && inputs.override_plugin_version || '' }}
+      overridden_plugin_version: ${{ inputs.overridden_plugin_version != '' && inputs.overridden_plugin_version || '' }}
 
 
   upload-to-registry:
@@ -60,7 +57,7 @@ jobs:
     if: |
       always() && 
       (needs.check-version.result == 'success') && 
-      (inputs.build_plugin_binaries == false || needs.build-binaries.result == 'success')
+      (github.event_name != 'workflow_dispatch' || needs.build-binaries.result == 'success')
     needs: [check-version, build-binaries]
     env:
       SCARB_REGISTRY_AUTH_TOKEN: ${{ inputs.dev_registry == true && secrets.DEV_SCARB_REGISTRY_AUTH_TOKEN || secrets.SCARB_REGISTRY_AUTH_TOKEN }}
@@ -91,11 +88,11 @@ jobs:
         run: |
           set -exo pipefail
           
-          if [ -n "${{ inputs.override_plugin_version }}" ]; then
-            sed -i.bak "/\[package\]/,/version =/ s/version = \".*/version = \"${{ inputs.override_plugin_version }}\"/" Scarb.toml
+          if [ -n "${{ inputs.overridden_plugin_version }}" ]; then
+            sed -i.bak "/\[package\]/,/version =/ s/version = \".*/version = \"${{ inputs.overridden_plugin_version }}\"/" Scarb.toml
             rm Scarb.toml.bak 2> /dev/null
 
-            sed -i.bak "/\[package\]/,/version =/ s/version = \".*/version = \"${{ inputs.override_plugin_version }}\"/" Cargo.toml
+            sed -i.bak "/\[package\]/,/version =/ s/version = \".*/version = \"${{ inputs.overridden_plugin_version }}\"/" Cargo.toml
             rm Cargo.toml.bak 2> /dev/null
           fi
 
