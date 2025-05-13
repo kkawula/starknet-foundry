@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "snforge_scarb_plugin"
-version = "0.43.0-test.123"
+version = "0.43.1-test.123"
 dependencies = [
  "cairo-lang-formatter",
  "cairo-lang-macro",
