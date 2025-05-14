@@ -54,9 +54,9 @@ jobs:
         shell: bash
         run: |
           if [[ ${{ matrix.target }} == *windows* ]]; then
-            ARTIFACTS_PATH="artifacts/starknet-foundry-${{ inputs.bin_version }}-${{ matrix.target }}.zip"
+            ARTIFACTS_PATH="artifacts/starknet-foundry-v${{ inputs.bin_version }}-${{ matrix.target }}.zip"
           else
-            ARTIFACTS_PATH="artifacts/starknet-foundry-${{ inputs.bin_version }}-${{ matrix.target }}.tar.gz"
+            ARTIFACTS_PATH="artifacts/starknet-foundry-v${{ inputs.bin_version }}-${{ matrix.target }}.tar.gz"
           fi
           echo "ARTIFACTS_PATH=$ARTIFACTS_PATH" >> $GITHUB_ENV
 
