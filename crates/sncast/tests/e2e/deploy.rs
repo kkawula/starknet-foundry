@@ -47,9 +47,10 @@ async fn test_happy_case_human_readable() {
         output,
         indoc! {
             "
-            command: deploy
-            contract_address: 0x0[..]
-            transaction_hash: 0x0[..]
+            Success: Deployment completed
+
+            Contract Address: 0x0[..]
+            Transaction Hash: 0x0[..]
 
             To see deployment details, visit:
             contract: [..]
@@ -71,7 +72,6 @@ async fn test_happy_case(class_hash: Felt, account_type: AccountType) {
         "accounts.json",
         "--account",
         "my_account",
-        "--int-format",
         "--json",
         "deploy",
         "--url",
@@ -119,7 +119,6 @@ async fn test_happy_case_different_fees(fee_args: FeeArgs) {
         "accounts.json",
         "--account",
         "my_account",
-        "--int-format",
         "--json",
         "deploy",
         "--url",
@@ -174,7 +173,6 @@ async fn test_happy_case_with_constructor() {
         ACCOUNT_FILE_PATH,
         "--account",
         "user4",
-        "--int-format",
         "--json",
         "deploy",
         "--url",
@@ -206,7 +204,6 @@ async fn test_happy_case_with_constructor_cairo_expression_calldata() {
         "accounts.json",
         "--account",
         "my_account",
-        "--int-format",
         "--json",
         "deploy",
         "--url",
@@ -251,8 +248,8 @@ fn test_wrong_calldata() {
     assert_stderr_contains(
         output,
         indoc! {r"
-        command: deploy
-        error: Transaction execution error [..]
+        Command: deploy
+        Error: Transaction execution error [..]
         "},
     );
 }
@@ -304,8 +301,8 @@ fn test_contract_already_deployed() {
     assert_stderr_contains(
         output,
         indoc! {r"
-        command: deploy
-        error: Transaction execution error [..]
+        Command: deploy
+        Error: Transaction execution error [..]
         "},
     );
 }
@@ -340,8 +337,8 @@ fn test_too_low_gas() {
     assert_stderr_contains(
         output,
         indoc! {r"
-        command: deploy
-        error: The transaction's resources don't cover validation or the minimal transaction fee
+        Command: deploy
+        Error: The transaction's resources don't cover validation or the minimal transaction fee
         "},
     );
 }

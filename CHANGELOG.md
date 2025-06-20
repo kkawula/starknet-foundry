@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Cast
+
+#### Changed
+
+- Improved commands output readability with colors and simplified layout.
+
+#### Removed
+
+- `--int-format` and `--hex-format`, all values are displayed with default format
+
 ## [0.45.0] - 2025-06-16
 
 ### Forge
@@ -22,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Fixed
 
 - bug that caused `--trace-verbosity` to panic in fork tests
-- fixed a bug in fork tests where resources used in nested calls were counted multiple times, leading to overestimated gas and resource usage
+- fixed a bug in tests where resources used in nested calls were counted multiple times, leading to overestimated gas and resource usage
 
 #### Removed
 
